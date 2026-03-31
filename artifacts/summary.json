@@ -1,7 +1,30 @@
 {
   "backend": "mock",
+  "retriever": "tfidf",
+  "top_k": 4,
+  "generated_at_utc": "2026-03-31T18:36:01+00:00",
+  "python_version": "3.12.11",
+  "num_documents": 84,
   "num_settings": 5,
   "num_cases": 60,
+  "case_counts": {
+    "benign": 12,
+    "adversarial": 48
+  },
+  "document_counts": {
+    "benign": 24,
+    "malicious": 48,
+    "protected": 12
+  },
+  "case_categories": {
+    "answer_poisoning": 8,
+    "benign": 12,
+    "exfiltration_attempt": 8,
+    "fake_authority": 8,
+    "instruction_override": 8,
+    "role_confusion": 8,
+    "tool_triggering": 8
+  },
   "settings": [
     {
       "setting": "baseline_insecure",

@@ -10,7 +10,7 @@
 
 RAG-GuardBench is a compact benchmark and test harness for a narrow but important AI-safety question: how vulnerable is a retrieval-augmented generation pipeline to prompt injection through retrieved documents?
 
-The repository simulates a small but realistic RAG system. It ships a synthetic corpus of benign policy notes, internal reference notes, and adversarial retrieved attachments; chunks and indexes them with a simple TF-IDF retriever; assembles prompts from a system instruction, a user query, and retrieved context; exposes a few fake but realistic tools; and evaluates whether attacks succeed in making the model follow malicious instructions, leak protected values, corrupt its answer, or trigger unsafe tool use.
+The repository simulates a small but realistic RAG system. It ships a synthetic corpus of benign policy notes, internal reference notes, and adversarial retrieved attachments; chunks and indexes them with a simple TF-IDF or BM25 retriever; assembles prompts from a system instruction, a user query, and retrieved context; exposes a few fake but realistic tools; and evaluates whether attacks succeed in making the model follow malicious instructions, leak protected values, corrupt its answer, or trigger unsafe tool use.
 
 The benchmark is intentionally small enough to inspect end to end, but serious enough to make RAG security concrete, measurable, and reproducible.
 
@@ -22,7 +22,7 @@ This is a working first release with:
 - a runnable retrieval and prompt-assembly pipeline
 - six attack categories plus benign control cases
 - four lightweight defenses and one combined guard setting
-- case-level logging, summary metrics, sample plots, and a checked-in report
+- case-level logging, summary metrics, run manifests, sample plots, and a checked-in report
 - a reproducible mock backend plus an optional OpenAI-compatible backend for live model testing
 
 ## Why This Project Exists
@@ -52,7 +52,7 @@ This repo is not trying to model every jailbreak pattern. It is specifically abo
 ## What The Benchmark Currently Does
 
 - ships a synthetic corpus of benign, protected, and malicious documents
-- chunks and indexes the case-specific corpus with a simple TF-IDF retriever
+- chunks and indexes the case-specific corpus with either a TF-IDF or BM25 retriever
 - retrieves the top chunks for each user query
 - assembles prompts from system instruction, query, retrieved context, and tool descriptions
 - evaluates attacks across six categories:
@@ -69,7 +69,7 @@ This repo is not trying to model every jailbreak pattern. It is specifically abo
   - `two_stage_answering`
   - `full_guard`
 - logs retrieved chunks, prompts, answers, tool calls, defense actions, and case outcomes
-- writes summary JSON, case-level CSV, trace JSONL, failure examples, markdown report, HTML report, and SVG figures
+- writes a run manifest, summary JSON, case-level CSV, trace JSONL, failure examples, markdown report, HTML report, and SVG figures
 
 ## What It Explicitly Does Not Do
 
@@ -144,6 +144,7 @@ Interpretation:
 Representative outputs:
 
 - summary metrics: [`artifacts/summary.json`](artifacts/summary.json)
+- run manifest: [`artifacts/run_manifest.json`](artifacts/run_manifest.json)
 - case outcomes: [`artifacts/case_outcomes.csv`](artifacts/case_outcomes.csv)
 - trace log: [`artifacts/run_traces.jsonl`](artifacts/run_traces.jsonl)
 - failure examples: [`artifacts/failure_examples.json`](artifacts/failure_examples.json)
@@ -158,7 +159,7 @@ flowchart LR
     accDescr: Synthetic benign and malicious documents are indexed, retrieved for each query, passed through defenses, scored for answer safety and tool misuse, and written out as reproducible benchmark artifacts.
 
     corpus["Synthetic corpus<br/>benign, protected, malicious docs"]
-    retriever["Chunking and retrieval<br/>TF-IDF top-k chunks"]
+    retriever["Chunking and retrieval<br/>TF-IDF or BM25 top-k chunks"]
     prompt["Prompt assembly<br/>system instruction, query, context, tools"]
     defenses["Defenses<br/>hardening, sanitization, staged facts, tool gating"]
     model["Mock or OpenAI-compatible backend"]
@@ -191,7 +192,7 @@ flowchart LR
 .venv/bin/python -m pytest
 ```
 
-Or use the small Make targets:
+Or use the small Make targets after creating `.venv`:
 
 ```bash
 make generate-data
@@ -216,7 +217,8 @@ Then run:
   --corpus data/corpus.json \
   --cases data/cases.json \
   --output-dir artifacts_live \
-  --backend openai
+  --backend openai \
+  --retriever bm25
 ```
 
 The live backend expects the model to return JSON containing an answer plus any proposed tool calls. The mock backend remains the reproducible reference path for this repository.
@@ -228,6 +230,7 @@ rag-guardbench/
 ├── artifacts/
 │   ├── case_outcomes.csv
 │   ├── failure_examples.json
+│   ├── run_manifest.json
 │   ├── run_traces.jsonl
 │   └── summary.json
 ├── data/

@@ -3,11 +3,13 @@ from __future__ import annotations
 import math
 import re
 from collections import Counter
+from typing import Protocol
 
 from rag_guardbench.schemas import Chunk, Document
 
 
 TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
+SUPPORTED_RETRIEVERS = ("tfidf", "bm25")
 
 
 def tokenize(text: str) -> list[str]:
@@ -29,6 +31,11 @@ def chunk_document(document: Document) -> list[Chunk]:
             )
         )
     return chunks
+
+
+class Retriever(Protocol):
+    def retrieve(self, query: str, top_k: int = 4) -> list[Chunk]:
+        ...
 
 
 class TfidfRetriever:
@@ -79,3 +86,65 @@ class TfidfRetriever:
             )
         return sorted(scored, key=lambda item: item.score, reverse=True)[:top_k]
 
+
+class Bm25Retriever:
+    def __init__(self, documents: list[Document], k1: float = 1.5, b: float = 0.75) -> None:
+        self.documents = documents
+        self.chunks = [chunk for document in documents for chunk in chunk_document(document)]
+        self.k1 = k1
+        self.b = b
+        self.df: Counter[str] = Counter()
+        self.chunk_term_counts: dict[str, Counter[str]] = {}
+        self.chunk_lengths: dict[str, int] = {}
+        for chunk in self.chunks:
+            counts = Counter(tokenize(chunk.text + " " + chunk.title))
+            self.chunk_term_counts[chunk.chunk_id] = counts
+            self.chunk_lengths[chunk.chunk_id] = sum(counts.values())
+            for token in counts:
+                self.df[token] += 1
+        self.total_chunks = max(len(self.chunks), 1)
+        self.average_chunk_length = (
+            sum(self.chunk_lengths.values()) / self.total_chunks if self.chunks else 1.0
+        )
+        self.idf = {
+            token: math.log(1.0 + (self.total_chunks - count + 0.5) / (count + 0.5))
+            for token, count in self.df.items()
+        }
+
+    def retrieve(self, query: str, top_k: int = 4) -> list[Chunk]:
+        query_terms = Counter(tokenize(query))
+        scored: list[Chunk] = []
+        for chunk in self.chunks:
+            counts = self.chunk_term_counts[chunk.chunk_id]
+            chunk_length = self.chunk_lengths[chunk.chunk_id] or 1
+            score = 0.0
+            for token in query_terms:
+                frequency = counts.get(token, 0)
+                if not frequency:
+                    continue
+                numerator = frequency * (self.k1 + 1.0)
+                denominator = frequency + self.k1 * (
+                    1.0 - self.b + self.b * chunk_length / max(self.average_chunk_length, 1.0)
+                )
+                score += self.idf.get(token, 0.0) * numerator / denominator
+            scored.append(
+                Chunk(
+                    chunk_id=chunk.chunk_id,
+                    doc_id=chunk.doc_id,
+                    title=chunk.title,
+                    topic=chunk.topic,
+                    kind=chunk.kind,
+                    text=chunk.text,
+                    score=round(score, 6),
+                )
+            )
+        return sorted(scored, key=lambda item: item.score, reverse=True)[:top_k]
+
+
+def build_retriever(documents: list[Document], name: str) -> Retriever:
+    normalized = name.lower()
+    if normalized == "tfidf":
+        return TfidfRetriever(documents)
+    if normalized == "bm25":
+        return Bm25Retriever(documents)
+    raise ValueError(f"Unknown retriever: {name}")
