@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rag-guardbench"
+version = "0.1.0"
+description = "Compact benchmark for prompt injection and tool misuse in retrieval-augmented generation systems"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "requests>=2.31",
+]
+
+[project.scripts]
+rag-guardbench = "rag_guardbench.cli:main"
+rag-guardbench-generate-data = "rag_guardbench.sample_data:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
