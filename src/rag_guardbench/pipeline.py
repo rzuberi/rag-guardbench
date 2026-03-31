@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
+import platform
+from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
@@ -9,7 +13,7 @@ from rag_guardbench.data_io import load_cases, load_documents
 from rag_guardbench.defenses import prepare_defenses
 from rag_guardbench.models import build_model
 from rag_guardbench.reporting import build_reports
-from rag_guardbench.retrieval import TfidfRetriever
+from rag_guardbench.retrieval import build_retriever
 from rag_guardbench.schemas import BenchmarkCase, CaseResult, DefenseSetting, Document
 from rag_guardbench.tools import ToolContext, apply_tool_policy
 
@@ -66,24 +70,83 @@ def iter_case_documents(case: BenchmarkCase, documents: dict[str, Document]) -> 
     return [documents[doc_id] for doc_id in case.document_ids]
 
 
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(8192), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def write_run_manifest(
+    *,
+    corpus_path: Path,
+    cases_path: Path,
+    output_dir: Path,
+    backend: str,
+    retriever_name: str,
+    top_k: int,
+    documents: dict[str, Document],
+    cases: list[BenchmarkCase],
+) -> dict[str, object]:
+    document_kinds = Counter(document.kind for document in documents.values())
+    case_categories = Counter(case.attack_category for case in cases)
+    manifest = {
+        "generated_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "python_version": platform.python_version(),
+        "backend": backend,
+        "retriever": retriever_name,
+        "top_k": top_k,
+        "settings": [setting.to_dict() for setting in SETTINGS],
+        "corpus_path": str(corpus_path),
+        "cases_path": str(cases_path),
+        "corpus_sha256": file_sha256(corpus_path),
+        "cases_sha256": file_sha256(cases_path),
+        "num_documents": len(documents),
+        "num_cases": len(cases),
+        "document_counts": dict(sorted(document_kinds.items())),
+        "case_counts": {
+            "benign": sum(not case.attack_present for case in cases),
+            "adversarial": sum(case.attack_present for case in cases),
+        },
+        "case_categories": dict(sorted(case_categories.items())),
+    }
+    (output_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    return manifest
+
+
 def run_benchmark(
     corpus_path: Path,
     cases_path: Path,
     output_dir: Path,
     backend: str = "mock",
+    retriever_name: str = "tfidf",
+    top_k: int = 4,
 ) -> dict[str, object]:
+    if top_k < 1:
+        raise ValueError("top_k must be at least 1")
     output_dir.mkdir(parents=True, exist_ok=True)
     documents = load_documents(corpus_path)
     cases = load_cases(cases_path)
     model = build_model(backend)
+    run_manifest = write_run_manifest(
+        corpus_path=corpus_path,
+        cases_path=cases_path,
+        output_dir=output_dir,
+        backend=backend,
+        retriever_name=retriever_name,
+        top_k=top_k,
+        documents=documents,
+        cases=cases,
+    )
     case_results: list[CaseResult] = []
     trace_rows: list[dict[str, object]] = []
 
     for setting in SETTINGS:
         for case in cases:
             scoped_documents = iter_case_documents(case, documents)
-            retriever = TfidfRetriever(scoped_documents)
-            retrieved_chunks = retriever.retrieve(case.query, top_k=4)
+            retriever = build_retriever(scoped_documents, retriever_name)
+            retrieved_chunks = retriever.retrieve(case.query, top_k=top_k)
             defense_trace = prepare_defenses(retrieved_chunks, setting)
             retrieved_context = "\n\n".join(
                 f"[{chunk.title}] {chunk.text}" for chunk in defense_trace.sanitized_chunks
@@ -137,6 +200,9 @@ def run_benchmark(
                     "setting": setting.name,
                     "attack_category": case.attack_category,
                     "query": case.query,
+                    "expected_safe_behavior": case.expected_safe_behavior,
+                    "retriever": retriever_name,
+                    "top_k": top_k,
                     "retrieved_chunks": [chunk.to_dict() for chunk in retrieved_chunks],
                     "sanitized_chunks": [chunk.to_dict() for chunk in defense_trace.sanitized_chunks],
                     "extracted_facts": defense_trace.extracted_facts,
@@ -149,7 +215,7 @@ def run_benchmark(
                 }
             )
 
-    summary = build_reports(case_results, output_dir, backend)
+    summary = build_reports(case_results, output_dir, run_manifest)
     write_case_outputs(case_results, trace_rows, output_dir)
     return summary
 

@@ -1,0 +1,68 @@
+{
+  "generated_at_utc": "2026-03-31T18:36:01+00:00",
+  "python_version": "3.12.11",
+  "backend": "mock",
+  "retriever": "tfidf",
+  "top_k": 4,
+  "settings": [
+    {
+      "name": "baseline_insecure",
+      "prompt_hardening": false,
+      "context_sanitization": false,
+      "two_stage_answering": false,
+      "tool_permission_gating": false
+    },
+    {
+      "name": "prompt_hardened",
+      "prompt_hardening": true,
+      "context_sanitization": false,
+      "two_stage_answering": false,
+      "tool_permission_gating": false
+    },
+    {
+      "name": "sanitized_context",
+      "prompt_hardening": false,
+      "context_sanitization": true,
+      "two_stage_answering": false,
+      "tool_permission_gating": false
+    },
+    {
+      "name": "two_stage_answering",
+      "prompt_hardening": true,
+      "context_sanitization": false,
+      "two_stage_answering": true,
+      "tool_permission_gating": false
+    },
+    {
+      "name": "full_guard",
+      "prompt_hardening": true,
+      "context_sanitization": true,
+      "two_stage_answering": true,
+      "tool_permission_gating": true
+    }
+  ],
+  "corpus_path": "data/corpus.json",
+  "cases_path": "data/cases.json",
+  "corpus_sha256": "8c79786aca34cb9c1d72456c2c3f260e4c6432cabc2cbf5829bb32f83225b1be",
+  "cases_sha256": "29e5d16285ed2cba45053b011da5a506c010aa07ac3c511c336c278398497066",
+  "num_documents": 84,
+  "num_cases": 60,
+  "document_counts": {
+    "benign": 24,
+    "malicious": 48,
+    "protected": 12
+  },
+  "case_counts": {
+    "benign": 12,
+    "adversarial": 48
+  },
+  "case_categories": {
+    "answer_poisoning": 8,
+    "benign": 12,
+    "exfiltration_attempt": 8,
+    "fake_authority": 8,
+    "instruction_override": 8,
+    "role_confusion": 8,
+    "tool_triggering": 8
+  }
+}
